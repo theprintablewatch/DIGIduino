@@ -36,13 +36,3 @@ To program the chip on the PCB, follow these steps using the JST Jumper cable
 
 ![Back Board](https://github.com/theprintablewatch/TPWDigital/blob/main/Layouts/3.png?raw=true)
 
-## Troublshooting
-
- * Segments aren't lighting up:
-   * Check that none of the segments are shorting. Each segment pin is wired in parallel, meaning the segment "A" pin should be connected to the segment "A" pin on all of the digits. Also, double-check that all ATmega328 pins are properly connected to the PCB and not shorting with neighboring pins.
- * Time is not setting:
-   * Check that there is voltage over the RTC pins. This should read your battery voltage of 3V or programmer voltage of 5V
-   * Check that the switches are soldered correctly, try shorting the button pins on the PCB with something metallic
- * Segments aren't lighting up properly (look random)
-   * Double check if you installed Common Cathode 7 segment digits. If not, change the "btye hardwareConfig = COMMON_CATHODE" to "btye hardwareConfig = COMMON_ANNODE" (around line 57).
-
