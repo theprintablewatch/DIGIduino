@@ -408,21 +408,6 @@ void goToSleep()
   sevseg.refreshDisplay();
   //sevseg.setBrightness(60);
 
-  byte segmentPins[] = {6, 7, 8, 9, 10, 11, 12, 13};
-  byte digitPins[]   = {1, 3, 4, 5};
-  for (byte i = 0; i < 8; i++) pinMode(segmentPins[i], INPUT);
-  for (byte i = 0; i < 4; i++) pinMode(digitPins[i], INPUT);
-
-  // Set unused pins to INPUT_PULLUP or OUTPUT LOW
-  for (byte i = 0; i <= 21; i++) {
-    if (i != BUTTON_WAKE_PIN &&
-        i != BUTTON_HOUR_PIN &&
-        i != BUTTON_MINUTE_PIN &&
-        i != BUTTON_SPARE_PIN &&
-        i != 14 && i != 15 && i != 16) {
-      pinMode(i, INPUT_PULLUP);  // or OUTPUT LOW
-    }
-  }
   watchState = SLEEPING;
 
   // Example low-level sleep (on AVR):
