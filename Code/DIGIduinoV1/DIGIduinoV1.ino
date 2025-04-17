@@ -27,15 +27,18 @@ volatile bool wakeInterruptTriggered = false;
 // ------------------ Times & Delays ------------------
 unsigned long currentMillis      = 0;
 unsigned long lastInteraction    = 0;       // Tracks when a button was last pressed
-const unsigned long wakeInterval = 10000;    // Display active for 5s if no further interaction
+const unsigned long wakeInterval = 8000;    // Display active for 5s if no further interaction
 const unsigned long holdDuration = 2000;    // 2s hold to enter time-set mode
 const unsigned long showSetTime  = 2000;    // 2s to display "SET" before entering time-set
 
 // ------------------ State Machine ------------------
 enum WatchState {
   NORMAL,
+  SHOWDATE,
   SHOWSET,
   TIMESET,
+  SHOWDSET,
+  DATESET,
   SLEEPING
 };
 
@@ -46,6 +49,11 @@ bool sparePinHeld        = false;
 bool sparePinHolding     = false;
 unsigned long sparePinPressTime = 0;
 
+// ------------------ Hour Pin Holding Logic  (used for setting date)-----
+bool hourPinHeld        = false;
+bool hourPinHolding     = false;
+unsigned long hourPinPressTime = 0;
+
 // ------------------ Hour/Minute Buttons ------------------
 int hourPbState       = LOW;
 int lastHourPbState   = LOW;
@@ -55,6 +63,16 @@ int lastMinPbState    = LOW;
 // ------------------ Time Setting Variables ------------------
 int setHour   = 0;
 int setMinute = 0;
+int setDay   = 0;
+int setMonth = 0;
+// ------------------ Global Time Variables -------------------
+RtcDateTime now;
+int hour = 0;
+int minute = 0;
+int timeCombined = 8888;
+int day = 1;
+int month = 1;
+int dateCombined = 101;
 
 void setup() 
 {
@@ -90,6 +108,17 @@ void setup()
   RtcDateTime compiled = RtcDateTime(__DATE__, __TIME__);
   Rtc.SetDateTime(compiled);
 
+
+  // ------------------ RTC Setup ------------------
+  // Disable any unused pins
+
+  pinMode(17, OUTPUT);
+  pinMode(20, OUTPUT);
+  pinMode(21, OUTPUT);
+  pinMode(22, OUTPUT);
+
+
+
   // Optional: briefly display "beta" (or "TPW") on startup
   unsigned long start = millis();
   while(millis() - start < 2000) {
@@ -114,6 +143,10 @@ void loop()
     case NORMAL:
       handleNormalMode();
       break;
+    
+    case SHOWDATE:
+    handleShowDateMode();
+    break;
 
     case SHOWSET:
       handleShowSetMode();
@@ -121,6 +154,14 @@ void loop()
 
     case TIMESET:
       handleTimeSetMode();
+      break;
+
+    case SHOWDSET:
+      handleShowDSetMode();
+      break;
+
+    case DATESET:
+      handleDateSetMode();
       break;
 
     case SLEEPING:
@@ -138,17 +179,15 @@ void handleNormalMode()
   // If interrupt triggered, we've just woken up → reset things
   if(wakeInterruptTriggered) {
     wakeInterruptTriggered = false;
-    //sevseg.setBrightness(100); // Possibly brighter upon waking
     lastInteraction = millis();
   }
 
-  // Read time from RTC
-  RtcDateTime now = Rtc.GetDateTime();
-  int hour = now.Hour();
-  int minute = now.Minute();
-
-  // Display HHMM
-  int timeCombined = (hour * 100) + minute;
+//check if min button is pressed, display date if it is
+  if (digitalRead(BUTTON_MINUTE_PIN) == HIGH) {
+    watchState = SHOWDATE;
+    return;
+  }
+  //Time is read once globally before displaying time, reduces flickering
   sevseg.setNumber(timeCombined, 1);
 
   // Check for inactivity → sleep
@@ -159,9 +198,25 @@ void handleNormalMode()
 
   // Handle Spare Pin (enter time-set if held 2s)
   checkSparePinHold();
+  checkHourPinHold();
 
-  // We do not handle hour/minute increment in NORMAL mode, 
-  // only in TIMESET mode after user holds the spare pin.
+}
+// ----------------------------------------------------------
+//                  DATE MODE
+// ----------------------------------------------------------
+void handleShowDateMode()
+{
+  // While minute button is held, show DDMM
+  if (digitalRead(BUTTON_MINUTE_PIN) == HIGH) {
+ //   RtcDateTime now = Rtc.GetDateTime();
+  //  int dateCombined = (now.Day() * 100) + now.Month();
+    sevseg.setNumber(dateCombined, 1);
+    sevseg.refreshDisplay();
+  } else {
+    // Button released → return to NORMAL
+    watchState = NORMAL;
+    lastInteraction = millis();
+  }
 }
 
 // ----------------------------------------------------------
@@ -224,6 +279,66 @@ void handleTimeSetMode()
 }
 
 // ----------------------------------------------------------
+//                   SHOW Date SET MODE
+//   Display "dSET" for 2 seconds, then go into TIMESET
+// ----------------------------------------------------------
+void handleShowDSetMode()
+{
+  // Simply display "SET" for showSetTime (2s)
+  sevseg.setChars("dSET");
+  sevseg.refreshDisplay();
+
+  if(currentMillis - hourPinPressTime >= showSetTime) {
+    // After 2 seconds, enter TIMESET
+    // Grab current RTC time as a starting point
+    RtcDateTime now = Rtc.GetDateTime();
+    setDay   = now.Day();
+    setMonth = now.Month();
+
+    watchState = DATESET;
+    lastInteraction = millis(); // reset inactivity timer
+  }
+}
+
+// ----------------------------------------------------------
+//                   DATESET MODE
+//   Press hour/minute buttons to set date. If no press for
+//   5 seconds, lock in and sleep.
+// ----------------------------------------------------------
+void handleDateSetMode()
+{
+  // Display the 'setHour' and 'setMinute' being edited
+  int dateCombined = (setDay * 100) + setMonth;
+  sevseg.setNumber(dateCombined, 1);
+
+  // If no interaction for 5s, commit the new time and sleep
+  if(currentMillis - lastInteraction > wakeInterval) {
+    RtcDateTime now = Rtc.GetDateTime();
+    // Lock in the new time (day/month/year remain the same)
+    Rtc.SetDateTime(RtcDateTime(now.Year(), setMonth, setDay, 
+                                now.Hour(), now.Minute(), now.Second()));
+    goToSleep();
+    return;
+  }
+
+  // Check hour button
+  hourPbState = digitalRead(BUTTON_HOUR_PIN);
+  if(hourPbState == LOW && lastHourPbState == HIGH) {
+    setDay = (setDay % 31) + 1;
+    lastInteraction = millis(); // user pressed something
+  }
+  lastHourPbState = hourPbState;
+
+  // Check minute button
+  minPbState = digitalRead(BUTTON_MINUTE_PIN);
+  if(minPbState == LOW && lastMinPbState == HIGH) {
+    setMonth = (setMonth % 12) + 1;
+    lastInteraction = millis(); // user pressed something
+  }
+  lastMinPbState = minPbState;
+}
+
+// ----------------------------------------------------------
 //          Check if Spare Pin is held for 2 seconds
 // ----------------------------------------------------------
 void checkSparePinHold()
@@ -254,6 +369,35 @@ void checkSparePinHold()
   }
 }
 
+void checkHourPinHold()
+{
+  int dSetState = digitalRead(BUTTON_HOUR_PIN);
+
+  // We assume pin is active LOW; adjust if reversed
+  if(dSetState == HIGH) {
+    // If not previously pressed, note the time
+    if(!hourPinHolding) {
+      hourPinHolding = true;
+      hourPinPressTime = currentMillis;
+    } 
+    else {
+      // Already holding; check if 2s have elapsed
+      if(!hourPinHeld && (currentMillis - hourPinPressTime >= holdDuration)) {
+        // Officially move to SHOWSET
+        hourPinHeld  = true;
+        watchState    = SHOWDSET;
+        hourPinPressTime = currentMillis; // re-use to track "SET" display
+      }
+    }
+  }
+  else {
+    // Spare pin released, reset flags
+    hourPinHolding = false;
+    hourPinHeld    = false;
+  }
+}
+
+
 // ----------------------------------------------------------
 //                   Sleep Logic
 // ----------------------------------------------------------
@@ -262,8 +406,23 @@ void goToSleep()
   // Blank display & set brightness lower if desired
   sevseg.blank();
   sevseg.refreshDisplay();
-  sevseg.setBrightness(60);
+  //sevseg.setBrightness(60);
 
+  byte segmentPins[] = {6, 7, 8, 9, 10, 11, 12, 13};
+  byte digitPins[]   = {1, 3, 4, 5};
+  for (byte i = 0; i < 8; i++) pinMode(segmentPins[i], INPUT);
+  for (byte i = 0; i < 4; i++) pinMode(digitPins[i], INPUT);
+
+  // Set unused pins to INPUT_PULLUP or OUTPUT LOW
+  for (byte i = 0; i <= 21; i++) {
+    if (i != BUTTON_WAKE_PIN &&
+        i != BUTTON_HOUR_PIN &&
+        i != BUTTON_MINUTE_PIN &&
+        i != BUTTON_SPARE_PIN &&
+        i != 14 && i != 15 && i != 16) {
+      pinMode(i, INPUT_PULLUP);  // or OUTPUT LOW
+    }
+  }
   watchState = SLEEPING;
 
   // Example low-level sleep (on AVR):
@@ -283,5 +442,12 @@ void isrWake()
   // This is triggered by BUTTON_WAKE_PIN falling
   wakeInterruptTriggered = true;
   watchState = NORMAL;
+  now = Rtc.GetDateTime();
+  hour = now.Hour();
+  minute = now.Minute();
+  day = now.Day();
+  month = now.Month();
+  timeCombined = (hour * 100) + minute;
+  dateCombined = (now.Day() * 100) + now.Month();
   lastInteraction = millis();
 }
