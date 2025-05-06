@@ -42,6 +42,34 @@ enum WatchState {
   SLEEPING
 };
 
+// ------------------- Moon Phases ------------------
+const byte moonPhases[8][4] = {
+  {0x00, 0x00, 0x00, 0x00},       // 0: New Moon
+  {0x00, 0x0F, 0x09, 0x0F},       // 1: Waxing Crescent
+  {0x00, 0x00, 0x0F, 0x0F},       // 2: First Quarter
+  {0x00, 0x00, 0x00, 0x06},       // 3: Waxing Gibbous
+  {0x39, 0x09, 0x09, 0x0F},       // 4: Full Moon
+  {0x39, 0x09, 0x39, 0x00},       // 5: Waning Gibbous (fixed your typo)
+  {0x39, 0x39, 0x00, 0x00},       // 6: Last Quarter
+  {0x39, 0x00, 0x00, 0x00}        // 7: Waning Crescent
+};
+
+byte getMoonPhase(int year, byte month, byte day) {
+  if (month < 3) {
+    year--;
+    month += 12;
+  }
+
+  ++month;  // Algorithm uses March = 1
+  long days = 365.25 * year + 30.6 * month + day - 694039.09;
+  days = (long)(days);  // Remove decimals
+  byte phase = days % 29;
+
+  // Convert to 0–7 index
+  byte index = (phase * 8 + 14) / 29;  // +14 for rounding
+  return index & 7;  // Wrap in 0–7
+}
+
 WatchState watchState = NORMAL;
 
 // ------------------ Spare Pin Holding Logic ------------------
@@ -202,18 +230,36 @@ void handleNormalMode()
 
 }
 // ----------------------------------------------------------
-//                  DATE MODE
+//                  DATE MODE - With moonphse
 // ----------------------------------------------------------
-void handleShowDateMode()
-{
-  // While minute button is held, show DDMM
+void handleShowDateMode() {
+  static unsigned long lastToggleTime = 0;
+  static bool showingDate = true;
+
   if (digitalRead(BUTTON_MINUTE_PIN) == HIGH) {
- //   RtcDateTime now = Rtc.GetDateTime();
-  //  int dateCombined = (now.Day() * 100) + now.Month();
-    sevseg.setNumber(dateCombined, 1);
-    sevseg.refreshDisplay();
+    unsigned long currentMillis = millis();
+
+    // Toggle every 1000ms (1 second)
+    if (currentMillis - lastToggleTime >= 1000) {
+      showingDate = !showingDate;
+      lastToggleTime = currentMillis;
+    }
+
+    if (showingDate) {
+      RtcDateTime now = Rtc.GetDateTime();
+      int dateCombined = (now.Day() * 100) + now.Month();
+      sevseg.setNumber(dateCombined, 1); // 1 = leading zeros
+    } else {
+      // Get moon phase
+      RtcDateTime now = Rtc.GetDateTime();
+      byte moonPhase = getMoonPhase(now.Year(), now.Month(), now.Day());
+      sevseg.setSegments(moonPhases[moonPhase]);
+    }
+
+    sevseg.refreshDisplay(); // Update display
+
   } else {
-    // Button released → return to NORMAL
+    // Button released → return to NORMAL state
     watchState = NORMAL;
     lastInteraction = millis();
   }
