@@ -44,30 +44,41 @@ enum WatchState {
 
 // ------------------- Moon Phases ------------------
 const byte moonPhases[8][4] = {
+
   {0x00, 0x00, 0x00, 0x00},       // 0: New Moon
-  {0x00, 0x0F, 0x09, 0x0F},       // 1: Waxing Crescent
-  {0x00, 0x00, 0x0F, 0x0F},       // 2: First Quarter
-  {0x00, 0x00, 0x00, 0x06},       // 3: Waxing Gibbous
+  {0x00, 0x00, 0x00, 0x0F},       // 1: Waxing Crescent
+  {0x00, 0x00, 0x39, 0x0F},       // 2: First Quarter
+  {0x00, 0x39, 0x09, 0x0F},       // 3: Waxing Gibbous
   {0x39, 0x09, 0x09, 0x0F},       // 4: Full Moon
-  {0x39, 0x09, 0x39, 0x00},       // 5: Waning Gibbous (fixed your typo)
-  {0x39, 0x39, 0x00, 0x00},       // 6: Last Quarter
+  {0x39, 0x09, 0x0F, 0x00},       // 5: Waning Gibbous (fixed your typo)
+  {0x39, 0x0F, 0x00, 0x00},       // 6: Last Quarter
   {0x39, 0x00, 0x00, 0x00}        // 7: Waning Crescent
+
 };
 
 byte getMoonPhase(int year, byte month, byte day) {
+  // Adjust months for algorithm (Jan & Feb are 13 & 14 of previous year)
   if (month < 3) {
     year--;
     month += 12;
   }
 
-  ++month;  // Algorithm uses March = 1
-  long days = 365.25 * year + 30.6 * month + day - 694039.09;
-  days = (long)(days);  // Remove decimals
-  byte phase = days % 29;
+  // Calculate Julian Day Number (JDN)
+  long a = year / 100;
+  long b = 2 - a + a / 4;
+  long jd = (long)(365.25 * (year + 4716)) + (int)(30.6001 * (month + 1)) + day + b - 1524.5;
 
-  // Convert to 0–7 index
-  byte index = (phase * 8 + 14) / 29;  // +14 for rounding
-  return index & 7;  // Wrap in 0–7
+  // Days since known new moon on 2000 Jan 6 at 18:14 UTC (JD = 2451550.1)
+  float daysSinceNew = jd - 2451550.1;
+
+  // Moon age in days (modulo synodic month)
+  float synodicMonth = 29.53058867;
+  float age = fmod(daysSinceNew, synodicMonth);
+  if (age < 0) age += synodicMonth;
+
+  // Convert age to phase index 0–7
+  byte index = (byte)((age / synodicMonth) * 8 + 0.5);  // round to nearest
+  return index & 7;  // wrap to 0–7
 }
 
 WatchState watchState = NORMAL;
