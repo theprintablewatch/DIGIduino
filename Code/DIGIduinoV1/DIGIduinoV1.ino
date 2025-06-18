@@ -42,6 +42,45 @@ enum WatchState {
   SLEEPING
 };
 
+// ------------------- Moon Phases ------------------
+const byte moonPhases[8][4] = {
+
+  {0x00, 0x00, 0x00, 0x00},       // 0: New Moon
+  {0x00, 0x00, 0x00, 0x0F},       // 1: Waxing Crescent
+  {0x00, 0x00, 0x39, 0x0F},       // 2: First Quarter
+  {0x00, 0x39, 0x09, 0x0F},       // 3: Waxing Gibbous
+  {0x39, 0x09, 0x09, 0x0F},       // 4: Full Moon
+  {0x39, 0x09, 0x0F, 0x00},       // 5: Waning Gibbous (fixed your typo)
+  {0x39, 0x0F, 0x00, 0x00},       // 6: Last Quarter
+  {0x39, 0x00, 0x00, 0x00}        // 7: Waning Crescent
+
+};
+
+byte getMoonPhase(int year, byte month, byte day) {
+  // Adjust months for algorithm (Jan & Feb are 13 & 14 of previous year)
+  if (month < 3) {
+    year--;
+    month += 12;
+  }
+
+  // Calculate Julian Day Number (JDN)
+  long a = year / 100;
+  long b = 2 - a + a / 4;
+  long jd = (long)(365.25 * (year + 4716)) + (int)(30.6001 * (month + 1)) + day + b - 1524.5;
+
+  // Days since known new moon on 2000 Jan 6 at 18:14 UTC (JD = 2451550.1)
+  float daysSinceNew = jd - 2451550.1;
+
+  // Moon age in days (modulo synodic month)
+  float synodicMonth = 29.53058867;
+  float age = fmod(daysSinceNew, synodicMonth);
+  if (age < 0) age += synodicMonth;
+
+  // Convert age to phase index 0–7
+  byte index = (byte)((age / synodicMonth) * 8 + 0.5);  // round to nearest
+  return index & 7;  // wrap to 0–7
+}
+
 WatchState watchState = NORMAL;
 
 // ------------------ Spare Pin Holding Logic ------------------
@@ -202,18 +241,36 @@ void handleNormalMode()
 
 }
 // ----------------------------------------------------------
-//                  DATE MODE
+//                  DATE MODE - With moonphse
 // ----------------------------------------------------------
-void handleShowDateMode()
-{
-  // While minute button is held, show DDMM
+void handleShowDateMode() {
+  static unsigned long lastToggleTime = 0;
+  static bool showingDate = true;
+
   if (digitalRead(BUTTON_MINUTE_PIN) == HIGH) {
- //   RtcDateTime now = Rtc.GetDateTime();
-  //  int dateCombined = (now.Day() * 100) + now.Month();
-    sevseg.setNumber(dateCombined, 1);
-    sevseg.refreshDisplay();
+    unsigned long currentMillis = millis();
+
+    // Toggle every 1000ms (1 second)
+    if (currentMillis - lastToggleTime >= 1000) {
+      showingDate = !showingDate;
+      lastToggleTime = currentMillis;
+    }
+
+    if (showingDate) {
+      RtcDateTime now = Rtc.GetDateTime();
+      int dateCombined = (now.Day() * 100) + now.Month();
+      sevseg.setNumber(dateCombined, 1); // 1 = leading zeros
+    } else {
+      // Get moon phase
+      RtcDateTime now = Rtc.GetDateTime();
+      byte moonPhase = getMoonPhase(now.Year(), now.Month(), now.Day());
+      sevseg.setSegments(moonPhases[moonPhase]);
+    }
+
+    sevseg.refreshDisplay(); // Update display
+
   } else {
-    // Button released → return to NORMAL
+    // Button released → return to NORMAL state
     watchState = NORMAL;
     lastInteraction = millis();
   }
