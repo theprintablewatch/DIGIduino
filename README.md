@@ -22,8 +22,6 @@ Kickstarter Campaign [Kickstater](https://www.kickstarter.com/projects/theprinta
    * MiniCore - MCUdude - https://github.com/MCUdude/MiniCore
       * Add this link to your Boards Manager under Preferences - https://mcudude.github.io/MiniCore/package_MCUdude_MiniCore_index.json
 
-## Purchase PCBs - Releasing soon
-
 ## [Download Case Models](https://github.com/theprintablewatch/DIGIduino/tree/main/Models)
 
 ## How to Program ATMega328
