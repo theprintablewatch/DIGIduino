@@ -24,7 +24,7 @@ Kickstarter Campaign [Kickstater](https://www.kickstarter.com/projects/theprinta
 
 ## Purchase PCBs - Releasing soon
 
-## [Download Case Models]
+## [Download Case Models](https://github.com/theprintablewatch/DIGIduino/tree/main/Models)
 
 ## How to Program ATMega328
 
