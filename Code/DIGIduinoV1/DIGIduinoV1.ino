@@ -152,7 +152,7 @@ int year = 1066;
 int dateCombined = 101;
 int yearCombined = 2001;
 
-bool UKUS = false; // UK Date format DDMM = True, US Date Format MMDD = False
+bool UKUS = true; // UK Date format DDMM = True, US Date Format MMDD = False
 
 void setup() 
 {
@@ -161,6 +161,7 @@ void setup()
   pinMode(BUTTON_HOUR_PIN, INPUT);
   pinMode(BUTTON_MINUTE_PIN, INPUT);
   pinMode(BUTTON_SPARE_PIN, INPUT);
+  pinMode(17, OUTPUT);
 
   // Attach interrupt for wake button
   attachInterrupt(digitalPinToInterrupt(BUTTON_WAKE_PIN), isrWake, FALLING);
@@ -191,8 +192,6 @@ void setup()
 
   // ------------------ RTC Setup ------------------
   // Disable any unused pins
-
-  pinMode(17, OUTPUT);
   pinMode(20, OUTPUT);
   pinMode(21, OUTPUT);
   pinMode(22, OUTPUT);
@@ -653,6 +652,7 @@ void goToSleep()
   // Blank display & set brightness lower if desired
   sevseg.blank();
   sevseg.refreshDisplay();
+  digitalWrite(17,LOW);
   //sevseg.setBrightness(60);
 
   watchState = SLEEPING;
@@ -673,6 +673,7 @@ void isrWake()
 {
   // This is triggered by BUTTON_WAKE_PIN falling
   wakeInterruptTriggered = true;
+  digitalWrite(17,HIGH);
   watchState = NORMAL;
   now = Rtc.GetDateTime();
   hour = now.Hour();
