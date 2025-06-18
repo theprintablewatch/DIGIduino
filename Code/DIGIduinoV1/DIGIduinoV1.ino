@@ -39,6 +39,8 @@ enum WatchState {
   TIMESET,
   SHOWDSET,
   DATESET,
+  YEARSET,
+  UKUSSET,
   SLEEPING
 };
 
@@ -81,7 +83,39 @@ byte getMoonPhase(int year, byte month, byte day) {
   return index & 7;  // wrap to 0–7
 }
 
+long readVcc() {
+  // Set up ADC to read internal 1.1V reference
+  ADMUX = (1 << REFS0) | (1 << MUX3) | (1 << MUX2) | (1 << MUX1); // MUX[3:0]=1110, REFS0=1
+  delay(2);  // Let Vref settle
+  ADCSRA |= (1 << ADSC);  // Start conversion
+  while (ADCSRA & (1 << ADSC));  // Wait until done
+  int result = ADC;
+  long vcc = 1125300L / result;  // 1.1V * 1023 * 1000 (to get mV)
+  return vcc;  // Vcc in millivolts
+  }
+
+int voltageToPercentage(float voltage) {
+  // Clamp voltage to expected range
+  if (voltage >= 3.0) return 100;
+  if (voltage <= 1.8) return 0;
+
+  // Piecewise linear approximation
+  if (voltage > 2.9) {
+    return 95 + (voltage - 2.9) * 50;  // 2.9–3.0V → 95–100%
+  } else if (voltage > 2.7) {
+    return 75 + (voltage - 2.7) * 100; // 2.7–2.9V → 75–95%
+  } else if (voltage > 2.2) {
+    return 25 + (voltage - 2.2) * 100; // 2.2–2.7V → 25–75%
+  } else {
+    return (voltage - 1.8) * 62.5;     // 1.8–2.2V → 0–25%
+  }
+}
+
 WatchState watchState = NORMAL;
+
+
+//static long vccMillivolts = readVcc(); 
+//static int vccDisplay = vccMillivolts; 
 
 // ------------------ Spare Pin Holding Logic ------------------
 bool sparePinHeld        = false;
@@ -98,12 +132,15 @@ int hourPbState       = LOW;
 int lastHourPbState   = LOW;
 int minPbState        = LOW;
 int lastMinPbState    = LOW;
+int sparePbState        = LOW;
+int lastSparePbState    = LOW;
 
 // ------------------ Time Setting Variables ------------------
 int setHour   = 0;
 int setMinute = 0;
 int setDay   = 0;
 int setMonth = 0;
+int setYear = 0;
 // ------------------ Global Time Variables -------------------
 RtcDateTime now;
 int hour = 0;
@@ -111,7 +148,11 @@ int minute = 0;
 int timeCombined = 8888;
 int day = 1;
 int month = 1;
+int year = 1066;
 int dateCombined = 101;
+int yearCombined = 2001;
+
+bool UKUS = true; // UK Date format DDMM = True, US Date Format MMDD = False
 
 void setup() 
 {
@@ -120,6 +161,7 @@ void setup()
   pinMode(BUTTON_HOUR_PIN, INPUT);
   pinMode(BUTTON_MINUTE_PIN, INPUT);
   pinMode(BUTTON_SPARE_PIN, INPUT);
+  pinMode(17, OUTPUT);
 
   // Attach interrupt for wake button
   attachInterrupt(digitalPinToInterrupt(BUTTON_WAKE_PIN), isrWake, FALLING);
@@ -132,7 +174,7 @@ void setup()
   byte hardwareConfig = COMMON_CATHODE;       // On your PCB
   bool updateWithDelays = false;             // Recommended = false
   bool leadingZeros = true;                  // Display leading zeros
-  bool disableDecPoint = true;               // No decimal point used
+  bool disableDecPoint = false;               // No decimal point used
 
   sevseg.begin(hardwareConfig, numDigits, digitPins, segmentPins, 
                resistorsOnSegments, updateWithDelays, leadingZeros, 
@@ -150,19 +192,24 @@ void setup()
 
   // ------------------ RTC Setup ------------------
   // Disable any unused pins
-
-  pinMode(17, OUTPUT);
   pinMode(20, OUTPUT);
   pinMode(21, OUTPUT);
   pinMode(22, OUTPUT);
 
-
-
   // Optional: briefly display "beta" (or "TPW") on startup
   unsigned long start = millis();
+  static long vccMillivolts = readVcc(); 
+  static int vccDisplay = vccMillivolts; 
+  //vccMillivolts = readVcc(); 
+  //vccDisplay = vccMillivolts; 
+
   while(millis() - start < 2000) {
-    sevseg.setChars("hey");
-    sevseg.refreshDisplay();
+    //sevseg.setChars("hey");
+    //sevseg.refreshDisplay();
+        // e.g., 4975
+   // Convert to 4.97V → 497
+  sevseg.setNumber(vccDisplay,3);      // 2 decimal places (4.97)
+  sevseg.refreshDisplay();
   }
 
   // Initialise tracking of last interaction to now
@@ -203,6 +250,14 @@ void loop()
       handleDateSetMode();
       break;
 
+    case YEARSET:
+      handleYearSetMode();
+      break;
+
+    case UKUSSET: 
+      handleUKUSSetMode();
+      break;
+
     case SLEEPING:
       // Code only returns here after interrupt sets watchState to NORMAL.
       // So there's nothing special to do in the loop if watchState == SLEEPING.
@@ -227,7 +282,7 @@ void handleNormalMode()
     return;
   }
   //Time is read once globally before displaying time, reduces flickering
-  sevseg.setNumber(timeCombined, 1);
+  sevseg.setNumber(timeCombined, 2);
 
   // Check for inactivity → sleep
   if(currentMillis - lastInteraction > wakeInterval) {
@@ -245,26 +300,69 @@ void handleNormalMode()
 // ----------------------------------------------------------
 void handleShowDateMode() {
   static unsigned long lastToggleTime = 0;
-  static bool showingDate = true;
+  //static bool showingDate = true;
+  static int stateDate = 0;
+  static bool firstEntry = true;
+  static long vccMillivolts = readVcc(); 
+  static int vccDisplay = vccMillivolts; 
+  static float voltage = vccDisplay/1000.0;
+  static int batPerc = 25;
+
+  if (firstEntry) {
+    now = Rtc.GetDateTime();  // Refresh only once on entry
+    firstEntry = false;
+  }
 
   if (digitalRead(BUTTON_MINUTE_PIN) == HIGH) {
     unsigned long currentMillis = millis();
+    //RtcDateTime now = Rtc.GetDateTime();
+
+    //now = Rtc.GetDateTime();
 
     // Toggle every 1000ms (1 second)
     if (currentMillis - lastToggleTime >= 1000) {
-      showingDate = !showingDate;
+      stateDate = (stateDate + 1) % 5;
       lastToggleTime = currentMillis;
     }
 
-    if (showingDate) {
-      RtcDateTime now = Rtc.GetDateTime();
-      int dateCombined = (now.Day() * 100) + now.Month();
-      sevseg.setNumber(dateCombined, 1); // 1 = leading zeros
-    } else {
-      // Get moon phase
-      RtcDateTime now = Rtc.GetDateTime();
+    if (stateDate == 0) {
+      //Moonphase
       byte moonPhase = getMoonPhase(now.Year(), now.Month(), now.Day());
       sevseg.setSegments(moonPhases[moonPhase]);
+    } 
+    
+    if (stateDate == 1)
+    {
+     //Date
+     // RtcDateTime now = Rtc.GetDateTime();
+      if (UKUS == true){
+        dateCombined = (now.Day() * 100) + now.Month();
+      }
+      if (UKUS == false){
+        dateCombined = (now.Month() * 100) + now.Day();
+      }
+      
+      sevseg.setNumber(dateCombined, 2); // 1 = leading zeros
+    } 
+
+    if (stateDate == 2) {
+      //Year
+      //RtcDateTime now = Rtc.GetDateTime();
+      yearCombined = now.Year();
+      sevseg.setNumber(yearCombined); // 1 = leading zeros
+    }
+
+    if (stateDate == 3) {
+      //Year
+      //RtcDateTime now = Rtc.GetDateTime();
+      sevseg.setNumber(vccDisplay,3);  
+    }
+    if (stateDate == 4) {
+    //Year
+    //RtcDateTime now = Rtc.GetDateTime();
+    batPerc = voltageToPercentage(voltage);
+
+    sevseg.setNumber(batPerc);  
     }
 
     sevseg.refreshDisplay(); // Update display
@@ -291,6 +389,7 @@ void handleShowSetMode()
     RtcDateTime now = Rtc.GetDateTime();
     setHour   = now.Hour();
     setMinute = now.Minute();
+   
 
     watchState = TIMESET;
     lastInteraction = millis(); // reset inactivity timer
@@ -306,7 +405,7 @@ void handleTimeSetMode()
 {
   // Display the 'setHour' and 'setMinute' being edited
   int timeCombined = (setHour * 100) + setMinute;
-  sevseg.setNumber(timeCombined, 1);
+  sevseg.setNumber(timeCombined, 2);
 
   // If no interaction for 5s, commit the new time and sleep
   if(currentMillis - lastInteraction > wakeInterval) {
@@ -351,6 +450,7 @@ void handleShowDSetMode()
     RtcDateTime now = Rtc.GetDateTime();
     setDay   = now.Day();
     setMonth = now.Month();
+    setYear = now.Year();
 
     watchState = DATESET;
     lastInteraction = millis(); // reset inactivity timer
@@ -365,16 +465,23 @@ void handleShowDSetMode()
 void handleDateSetMode()
 {
   // Display the 'setHour' and 'setMinute' being edited
-  int dateCombined = (setDay * 100) + setMonth;
-  sevseg.setNumber(dateCombined, 1);
-
+  //int dateCombined = (setDay * 100) + setMonth;
+ 
+  if (UKUS == true){
+      dateCombined = (setDay * 100) + setMonth;
+      }
+      if (UKUS == false){
+      dateCombined = (setMonth * 100) + setDay;
+      }
+  sevseg.setNumber(dateCombined, 2);
   // If no interaction for 5s, commit the new time and sleep
-  if(currentMillis - lastInteraction > wakeInterval) {
+  if(currentMillis - lastInteraction > 3000) {
     RtcDateTime now = Rtc.GetDateTime();
     // Lock in the new time (day/month/year remain the same)
     Rtc.SetDateTime(RtcDateTime(now.Year(), setMonth, setDay, 
                                 now.Hour(), now.Minute(), now.Second()));
-    goToSleep();
+    watchState = YEARSET;
+    lastInteraction = millis(); 
     return;
   }
 
@@ -390,6 +497,88 @@ void handleDateSetMode()
   minPbState = digitalRead(BUTTON_MINUTE_PIN);
   if(minPbState == LOW && lastMinPbState == HIGH) {
     setMonth = (setMonth % 12) + 1;
+    lastInteraction = millis(); // user pressed something
+  }
+  lastMinPbState = minPbState;
+
+}
+
+void handleYearSetMode()
+{
+  // Display the 'setHour' and 'setMinute' being edited
+  sevseg.setNumber(setYear);
+
+  // If no interaction for 5s, commit the new time and sleep
+  if(currentMillis - lastInteraction > 3000) {
+    RtcDateTime now = Rtc.GetDateTime();
+    // Lock in the new time (day/month/year remain the same)
+    Rtc.SetDateTime(RtcDateTime(setYear, now.Month(), now.Day(), 
+                                now.Hour(), now.Minute(), now.Second()));
+    watchState = UKUSSET;
+    lastInteraction = millis(); 
+    return;
+  }
+
+  // Check hour button
+  hourPbState = digitalRead(BUTTON_HOUR_PIN);
+  if(hourPbState == LOW && lastHourPbState == HIGH) {
+    setYear = setYear + 1;
+    lastInteraction = millis(); // user pressed something
+  }
+  lastHourPbState = hourPbState;
+
+  // Check minute button
+  minPbState = digitalRead(BUTTON_MINUTE_PIN);
+  if(minPbState == LOW && lastMinPbState == HIGH) {
+    setYear = setYear - 1;
+    lastInteraction = millis(); // user pressed something
+  }
+  lastMinPbState = minPbState;
+}
+
+void handleUKUSSetMode()
+{
+  // Display the 'setHour' and 'setMinute' being edited
+  //static char dFormat[] = "DDMM";
+
+  if(UKUS == true)
+  sevseg.setChars("DDnn");
+
+  else 
+  sevseg.setChars("nnDD");
+
+  // If no interaction for 5s, commit the new time and sleep
+  if(currentMillis - lastInteraction > 2000) {
+    RtcDateTime now = Rtc.GetDateTime();
+    // Lock in the new time (day/month/year remain the same)
+    day = now.Day();
+    month = now.Month();
+    year = now.Year();
+    if (UKUS == true){
+      dateCombined = (day * 100) + month;
+    }
+    if (UKUS == false){
+      dateCombined = (month * 100) + day;
+    }
+    yearCombined = year;
+
+    now = Rtc.GetDateTime();
+    watchState = NORMAL;
+    return;
+  }
+
+  // Check hour button
+  hourPbState = digitalRead(BUTTON_HOUR_PIN);
+  if(hourPbState == LOW && lastHourPbState == HIGH) {
+    UKUS = !UKUS;
+    lastInteraction = millis(); // user pressed something
+  }
+  lastHourPbState = hourPbState;
+
+  // Check minute button
+  minPbState = digitalRead(BUTTON_MINUTE_PIN);
+  if(minPbState == LOW && lastMinPbState == HIGH) {
+    UKUS = !UKUS;
     lastInteraction = millis(); // user pressed something
   }
   lastMinPbState = minPbState;
@@ -463,6 +652,7 @@ void goToSleep()
   // Blank display & set brightness lower if desired
   sevseg.blank();
   sevseg.refreshDisplay();
+  digitalWrite(17,LOW);
   //sevseg.setBrightness(60);
 
   watchState = SLEEPING;
@@ -483,13 +673,21 @@ void isrWake()
 {
   // This is triggered by BUTTON_WAKE_PIN falling
   wakeInterruptTriggered = true;
+  digitalWrite(17,HIGH);
   watchState = NORMAL;
   now = Rtc.GetDateTime();
   hour = now.Hour();
   minute = now.Minute();
   day = now.Day();
   month = now.Month();
+  year = now.Year();
+  if (UKUS == true){
+    dateCombined = (day * 100) + month;
+    }
+  if (UKUS == false){
+    dateCombined = (month * 100) + day;
+    }
   timeCombined = (hour * 100) + minute;
-  dateCombined = (now.Day() * 100) + now.Month();
+  yearCombined = year;
   lastInteraction = millis();
 }
