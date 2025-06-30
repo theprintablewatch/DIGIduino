@@ -1,5 +1,6 @@
 # The Printable Watch Digital 
 Check out [TPW](https://theprintablewatch.com)
+
 Kickstarter Campaign [Kickstater](https://www.kickstarter.com/projects/theprintablewatch/digiduino-arduino-based-diy-digital-watch-development-kit)
 
 ![](https://github.com/theprintablewatch/DIGIduino/blob/c6c6814bb03cd5c846c423ae425610ccb49aae05/Media/kickstarter%20Header.jpg)
@@ -10,11 +11,7 @@ Kickstarter Campaign [Kickstater](https://www.kickstarter.com/projects/theprinta
     * DS1302 RTC
     * 4 Digit 7-segment display
   * 3D printed watch case
-  * 12 Month Battery life
-
-## Current status of project
-  * Recieved funding via Kicksarter
-  * First batch of fully assembled PCBs on order
+  * 12 Month+ Battery life
 
 ## Arduino Requirements
  * Librarys Used:
