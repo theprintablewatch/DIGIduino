@@ -1,7 +1,8 @@
 # The Printable Watch Digital 
 Check out [TPW](https://theprintablewatch.com)
-
 Kickstarter Campaign [Kickstater](https://www.kickstarter.com/projects/theprintablewatch/digiduino-arduino-based-diy-digital-watch-development-kit)
+
+(https://github.com/theprintablewatch/DIGIduino/blob/c6c6814bb03cd5c846c423ae425610ccb49aae05/Media/kickstarter%20Header.jpg)
 
 ## Features
   * Arduino based digital watch
