@@ -26,11 +26,13 @@ Kickstarter Campaign [Kickstater](https://www.kickstarter.com/projects/theprinta
 
 ## How to Program ATMega328
 
-I have uploaded a short youtube video explaining how to program a ATMega328 seperate from the Uno.
+Follow the guide [here](https://github.com/theprintablewatch/DIGIduino/blob/541a8b5c67f3c3e3cfa8df9d08a5a50cb2cadccd/Programming%20Guide.MD)
+
+I have also filmed a short youtube video explaining how to program a ATMega328 seperate from the Uno more generally.
 
 [![Minimalist Arduino - How to Program ATmega328 and ATtiny85](https://img.youtube.com/vi/qGbuzuVSzVs/0.jpg)]((https://youtu.be/qGbuzuVSzVs))
 
 To program the chip on the PCB, follow these steps using the JST Jumper cable
 
-![Back Board](https://github.com/theprintablewatch/TPWDigital/blob/main/Layouts/3.png?raw=true)
+![Back Board](https://github.com/theprintablewatch/DIGIduino/blob/541a8b5c67f3c3e3cfa8df9d08a5a50cb2cadccd/Media/JST%20Header.jpg)
 
