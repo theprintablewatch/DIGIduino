@@ -20,7 +20,13 @@ Kickstarter Campaign [Kickstater](https://www.kickstarter.com/projects/theprinta
    * MiniCore - MCUdude - https://github.com/MCUdude/MiniCore
       * Add this link to your Boards Manager under Preferences - https://mcudude.github.io/MiniCore/package_MCUdude_MiniCore_index.json
 
-## [Download Case Models](https://github.com/theprintablewatch/DIGIduino/tree/main/Models)
+## 3D Printable Case
+
+The case and pushbuttons are designed to be easily 3D printed from any standard 3D printer. I have made the .STEP files available as well as a .dxf of the PCB so you can modify the case or even design your own!
+
+![](https://github.com/theprintablewatch/DIGIduino/blob/877531b2b9126e457ac04e760b6008f78bc14c94/Media/Explode%20View.jpg)
+
+[Download Case Models](https://github.com/theprintablewatch/DIGIduino/tree/main/Models)
 
 ## How to Program ATMega328
 
