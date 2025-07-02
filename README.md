@@ -43,3 +43,37 @@ To program the chip on the PCB, follow these steps using the JST Jumper cable
 
 ![Back Board](https://github.com/theprintablewatch/DIGIduino/blob/541a8b5c67f3c3e3cfa8df9d08a5a50cb2cadccd/Media/JST%20Header.jpg)
 
+## Developing your own firmware
+
+The DIGIduino firmware is open source, I encourage you to make a copy of the basic firmware and add your own features!
+Pins used:
+
+## 🔌 Pin Usage Summary
+
+| **Pin** | **Arduino Alias** | **Function** |
+|--------|-------------------|-------------|
+| **0**   | `D0`              | Top Left Button |
+| **1**   | `D1`              | SevSeg digit 0 control |
+| **2**   | `D2`              | Top Right Button (Wake-up button) |
+| **3**   | `D3`              | SevSeg digit 1 control |
+| **4**   | `D4`              | SevSeg digit 2 control |
+| **5**   | `D5`              | SevSeg digit 3 control |
+| **6**   | `D6`              | SevSeg segment A |
+| **7**   | `D7`              | SevSeg segment B |
+| **8**   | `D8`              | SevSeg segment C |
+| **9**   | `D9`              | SevSeg segment D |
+| **10**  | `D10`             | SevSeg segment E |
+| **11**  | `D11`             | SevSeg segment F |
+| **12**  | `D12`             | SevSeg segment G |
+| **13**  | `D13`             | SevSeg segment DP (decimal point) |
+| **14**  | `A0`              | RTC Data I/O (`ThreeWire` – DS1302) |
+| **15**  | `A1`              | RTC CLK (SCLK) |
+| **16**  | `A2`              | RTC CE (RST) |
+| **17**  | `A3`              | RTC Power Pin (set HIGH in `isrWake`, LOW in `goToSleep`) |
+| **18**  | `A4`              | Low Left Button |
+| **19**  | `A5`              | Low Right Button |
+| **20**  | '20'                 | Spare - Disabled (`pinMode(20, OUTPUT)`) |
+| **21**  | '21'                 | Spare - Disabled (`pinMode(21, OUTPUT)`) |
+| **22**  | '22'                 | Spare - Disabled (`pinMode(22, OUTPUT)`) |
+
+
