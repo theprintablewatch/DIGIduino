@@ -72,8 +72,8 @@ Pins used:
 | **17**  | `A3`              | RTC Power Pin (set HIGH in `isrWake`, LOW in `goToSleep`) |
 | **18**  | `A4`              | Low Left Button |
 | **19**  | `A5`              | Low Right Button |
-| **20**  | '20'                 | Spare - Disabled (`pinMode(20, OUTPUT)`) |
-| **21**  | '21'                 | Spare - Disabled (`pinMode(21, OUTPUT)`) |
-| **22**  | '22'                 | Spare - Disabled (`pinMode(22, OUTPUT)`) |
+| **20**  | `20`                 | Spare - Disabled (`pinMode(20, OUTPUT)`) |
+| **21**  | `21`                 | Spare - Disabled (`pinMode(21, OUTPUT)`) |
+| **22**  | `22`                 | Spare - Disabled (`pinMode(22, OUTPUT)`) |
 
 
