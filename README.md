@@ -10,6 +10,7 @@ Kickstarter Campaign [Kickstater](https://www.kickstarter.com/projects/theprinta
     * ATMega328P based
     * DS1302 RTC
     * 4 Digit 7-segment display
+    * 4 Programmable physical buttons
   * 3D printed watch case
   * 12 Month+ Battery life
 
@@ -26,7 +27,9 @@ The case and pushbuttons are designed to be easily 3D printed from any standard 
 [Download Case Models](https://github.com/theprintablewatch/DIGIduino/tree/main/Models)
 ![](https://github.com/theprintablewatch/DIGIduino/blob/877531b2b9126e457ac04e760b6008f78bc14c94/Media/Explode%20View.jpg)
 
+## How to use the watch?
 
+[![Minimalist Arduino - How to Program ATmega328 and ATtiny85](https://img.youtube.com/vi/XvohYlr38eU/0.jpg)]((https://youtu.be/XvohYlr38eU))
 
 ## How to Program ATMega328
 
