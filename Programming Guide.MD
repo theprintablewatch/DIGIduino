@@ -43,6 +43,8 @@ Head to tools> Board > MiniCore > Atmega328
 
 Make sure the rest of the settings under tools are as follows. 
 
+![Settings](https://github.com/theprintablewatch/DIGIduino/blob/7ab9fe13d00a81972d000b0a8e99d536001d90a6/Media/Bootloader%20Settings.jpg)
+
 One option which is really important is the Clock setting, MAKE SURE INTERNAL 8MHz is selected. if you burn a bootloader with an external crystal setting you may brick the device.
 
 REMOVE THE BATTERY FROM THE MOVEMENT BEORE PROCEEDING 
