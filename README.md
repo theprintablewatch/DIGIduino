@@ -1,7 +1,7 @@
 # The Printable Watch Digital 
 Check out [TPW](https://theprintablewatch.com)
 
-Kickstarter Campaign [Kickstater](https://www.kickstarter.com/projects/theprintablewatch/digiduino-arduino-based-diy-digital-watch-development-kit)
+Kickstarter Campaign [Kickstarter](https://www.kickstarter.com/projects/theprintablewatch/digiduino-arduino-based-diy-digital-watch-development-kit)
 
 ![](https://github.com/theprintablewatch/DIGIduino/blob/c6c6814bb03cd5c846c423ae425610ccb49aae05/Media/kickstarter%20Header.jpg)
 
@@ -15,7 +15,7 @@ Kickstarter Campaign [Kickstater](https://www.kickstarter.com/projects/theprinta
   * 12 Month+ Battery life
 
 ## Arduino Requirements
- * Librarys Used:
+ * Libraries Used:
    * SevSeg - Dean Reading - https://github.com/DeanIsMe/SevSeg
    * Rtc by Makuna - Michael C. Miller - https://github.com/Makuna/Rtc/wiki
    * MiniCore - MCUdude - https://github.com/MCUdude/MiniCore
