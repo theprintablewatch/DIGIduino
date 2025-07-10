@@ -2,6 +2,10 @@
 /*
   The Printable Watch 2025
   theprintablewatch.com
+
+  Main Stable Code
+
+  Battery test logic disabled
 */
 
 #include "SevSeg.h"
@@ -282,7 +286,7 @@ void handleNormalMode()
     return;
   }
   //Time is read once globally before displaying time, reduces flickering
-  sevseg.setNumber(timeCombined, 2);
+  sevseg.setNumber(timeCombined);
 
   // Check for inactivity → sleep
   if(currentMillis - lastInteraction > wakeInterval) {
@@ -321,7 +325,7 @@ void handleShowDateMode() {
 
     // Toggle every 1000ms (1 second)
     if (currentMillis - lastToggleTime >= 1000) {
-      stateDate = (stateDate + 1) % 5;
+      stateDate = (stateDate + 1) % 3;
       lastToggleTime = currentMillis;
     }
 
