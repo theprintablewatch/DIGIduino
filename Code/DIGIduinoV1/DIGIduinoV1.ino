@@ -2,6 +2,10 @@
 /*
   The Printable Watch 2025
   theprintablewatch.com
+
+
+  Fork to develop internal battery measuring logic
+
 */
 
 #include "SevSeg.h"
