@@ -44,19 +44,15 @@ enum WatchState {
 };
 ```
 
-Setup Function
+### Setup Function
 
 The setup() function does the following:
+ - Configures button pins
+ - Attaches a wake-up interrupt
+ - Initializes the seven-segment display
+ - Starts the real-time clock
+ - Loop and State Machine
 
-Configures button pins
-
-Attaches a wake-up interrupt
-
-Initializes the seven-segment display
-
-Starts the real-time clock
-
-Loop and State Machine
 The loop() function continuously refreshes the display and switches between states:
 
 ```c++
@@ -79,7 +75,7 @@ switch(watchState)
 }
 ```
 
-Example Mode: Normal Operation
+### Example Mode: Normal Operation
 handleNormalMode() handles standard time display and input:
 
 ```c++
@@ -97,7 +93,7 @@ checkSparePinHold();
 checkHourPinHold();
 ```
 
-Sleep and Wake
+### Sleep and Wake
 When idle, the watch enters low power sleep mode:
 
 ```c++
@@ -139,25 +135,18 @@ void isrWake()
 }
 ```
 
-Getting Started
+## Getting Started
+
 Install the MiniCore board package and required libraries (see README.md and Programming Guide.MD).
-
 Open DIGIduinoV1.ino in the Arduino IDE.
-
 Review the state machine and handlers.
-
 Try modifying handleShowDateMode() or add a new watch mode.
-
 Use HardwareTest/HardwareTest.ino to test buttons and display.
 
-Firmware Architecture Summary
+## Firmware Architecture Summary
 The firmware is structured with:
-
 Initialization in setup()
-
 A state machine in loop()
-
 Dedicated handler functions for each mode
-
 This clean separation makes it easy to understand and extend. Once you're comfortable with how state transitions and display updates work, you can start adding custom watch features.
 
