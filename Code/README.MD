@@ -91,9 +91,10 @@ if(currentMillis - lastInteraction > wakeInterval) {
 // Handle Spare Pin (enter time-set if held 2s)
 checkSparePinHold();
 checkHourPinHold();
-```https://github.com/theprintablewatch/DIGIduino/blob/main/Code/README.MD
+```
 
 ### Sleep and Wake
+
 When idle, the watch enters low power sleep mode:
 `pin 17` is the power pin to the RTC, setting this high and low can switch the RTC on and off. Note when the RTC is in sleep it will still keep track of time but it's not possible to set or read the time.
 
