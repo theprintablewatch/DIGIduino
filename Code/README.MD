@@ -17,7 +17,7 @@ The DIGIduino is an Arduino‑based digital watch built around:
 
 ### Required Libraries
 - [`SevSeg`](https://github.com/DeanIsMe/SevSeg)
-- [`Rtc` by Makuna](https://github.com/Makuna/Rtc)
+- [`Rtc by Makuna`](https://github.com/Makuna/Rtc)
 
 ---
 
