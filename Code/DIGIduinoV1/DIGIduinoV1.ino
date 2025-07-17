@@ -45,6 +45,7 @@ enum WatchState {
   DATESET,
   YEARSET,
   UKUSSET,
+  STOPWATCH,
   SLEEPING
 };
 
@@ -158,7 +159,12 @@ int yearCombined = 2001;
 
 bool UKUS = true; // UK Date format DDMM = True, US Date Format MMDD = False
 
-void setup() 
+// ------------------ Stopwatch Variables ------------------
+unsigned long stopwatchElapsed    = 0;    // accumulated time in ms
+unsigned long stopwatchStartTime  = 0;    // last start time
+bool         stopwatchRunning     = false;
+
+void setup()
 {
   // ------------------ Pin Modes ------------------
   pinMode(BUTTON_WAKE_PIN, INPUT);
@@ -258,8 +264,12 @@ void loop()
       handleYearSetMode();
       break;
 
-    case UKUSSET: 
+    case UKUSSET:
       handleUKUSSetMode();
+      break;
+
+    case STOPWATCH:
+      handleStopwatchMode();
       break;
 
     case SLEEPING:
@@ -297,6 +307,16 @@ void handleNormalMode()
   // Handle Spare Pin (enter time-set if held 2s)
   checkSparePinHold();
   checkHourPinHold();
+
+  // Quick hour press enters stopwatch
+  hourPbState = digitalRead(BUTTON_HOUR_PIN);
+  if(hourPbState == LOW && lastHourPbState == HIGH && !hourPinHeld) {
+    watchState = STOPWATCH;
+    stopwatchElapsed = 0;
+    stopwatchRunning = false;
+    lastInteraction = millis();
+  }
+  lastHourPbState = hourPbState;
 
 }
 // ----------------------------------------------------------
@@ -642,9 +662,58 @@ void checkHourPinHold()
   }
   else {
     // Spare pin released, reset flags
-    hourPinHolding = false;
-    hourPinHeld    = false;
+  hourPinHolding = false;
+  hourPinHeld    = false;
   }
+}
+
+// ----------------------------------------------------------
+//                    Stopwatch Mode
+// ----------------------------------------------------------
+void handleStopwatchMode()
+{
+  // Calculate elapsed time
+  unsigned long elapsed = stopwatchElapsed;
+  if(stopwatchRunning) {
+    elapsed += millis() - stopwatchStartTime;
+  }
+
+  unsigned int totalSeconds = elapsed / 1000;
+  unsigned int minutes = totalSeconds / 60;
+  unsigned int seconds = totalSeconds % 60;
+  int displayNum = (minutes * 100) + seconds;
+  sevseg.setNumber(displayNum, 2);
+
+  // Start/stop with spare button
+  sparePbState = digitalRead(BUTTON_SPARE_PIN);
+  if(sparePbState == LOW && lastSparePbState == HIGH) {
+    if(stopwatchRunning) {
+      stopwatchElapsed += millis() - stopwatchStartTime;
+      stopwatchRunning = false;
+    } else {
+      stopwatchStartTime = millis();
+      stopwatchRunning = true;
+    }
+    lastInteraction = millis();
+  }
+  lastSparePbState = sparePbState;
+
+  // Reset with minute button
+  minPbState = digitalRead(BUTTON_MINUTE_PIN);
+  if(minPbState == LOW && lastMinPbState == HIGH) {
+    stopwatchElapsed = 0;
+    stopwatchStartTime = millis();
+    lastInteraction = millis();
+  }
+  lastMinPbState = minPbState;
+
+  // Exit to normal with hour button
+  hourPbState = digitalRead(BUTTON_HOUR_PIN);
+  if(hourPbState == LOW && lastHourPbState == HIGH) {
+    watchState = NORMAL;
+    lastInteraction = millis();
+  }
+  lastHourPbState = hourPbState;
 }
 
 

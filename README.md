@@ -11,6 +11,7 @@ Kickstarter Campaign [Kickstarter](https://www.kickstarter.com/projects/theprint
     * DS1302 RTC
     * 4 Digit 7-segment display
     * 4 Programmable physical buttons
+    * Built-in stopwatch mode
   * 3D printed watch case
   * 12 Month+ Battery life
 
