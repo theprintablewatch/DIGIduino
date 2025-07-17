@@ -29,7 +29,7 @@ The case and pushbuttons are designed to be easily 3D printed from any standard 
 
 ## How to use the watch?
 
-[![Minimalist Arduino - How to Program ATmega328 and ATtiny85](https://img.youtube.com/vi/XvohYlr38eU/0.jpg)]((https://youtu.be/XvohYlr38eU))
+[![DIGIduino - How to use the watch?](https://img.youtube.com/vi/XvohYlr38eU/0.jpg)](https://youtu.be/XvohYlr38eU)
 
 ## How to Program ATMega328
 
@@ -37,7 +37,7 @@ Follow the guide [here](https://github.com/theprintablewatch/DIGIduino/blob/541a
 
 I have also filmed a short youtube video explaining how to program a ATMega328 seperate from the Uno more generally.
 
-[![Minimalist Arduino - How to Program ATmega328 and ATtiny85](https://img.youtube.com/vi/qGbuzuVSzVs/0.jpg)]((https://youtu.be/qGbuzuVSzVs))
+[![Minimalist Arduino - How to Program ATmega328 and ATtiny85](https://img.youtube.com/vi/qGbuzuVSzVs/0.jpg)](https://youtu.be/qGbuzuVSzVs)
 
 To program the chip on the PCB, follow these steps using the JST Jumper cable
 
