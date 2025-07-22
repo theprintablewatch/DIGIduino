@@ -18,21 +18,36 @@ RtcDS1302<ThreeWire> Rtc(myWire);
 // ------------------ SevSeg Setup ------------------
 SevSeg sevseg;
 
-// ------------------ Pins ------------------
-const byte BUTTON_WAKE_PIN = 2;     // Wake-up button (external interrupt)
-const byte BUTTON_HOUR_PIN = 19;    // Hour increment button
-const byte BUTTON_MINUTE_PIN = 18;  // Minute increment button
-const byte BUTTON_SPARE_PIN = 0;    // Enter time-set mode (held 2 seconds)
-
-// ------------------ Interrupt Flag ------------------
-volatile bool wakeInterruptTriggered = false;
-
 // ------------------ Times & Delays ------------------
-unsigned long currentMillis = 0;
-unsigned long lastInteraction = 0;        // Tracks when a button was last pressed
-const unsigned long wakeInterval = 8000;  // Display active for 5s if no further interaction
-const unsigned long holdDuration = 2000;  // 2s hold to enter time-set mode
-const unsigned long showSetTime = 2000;   // 2s to display "SET" before entering time-set
+const unsigned long WAKE_INTERVAL = 8000;  // Display active for 8s if no further interaction
+const unsigned long COMMIT_TIME = 2000;    // Commit changes after 2s if no interaction
+const unsigned long LONG_PRESS_DELAY = 2000;  // 2s hold to enter time-set mode
+const unsigned long SHOW_SET_TIME = 2000;  // 2s to display "SET" before entering time-set
+unsigned long currentMillis;
+unsigned long lastInteraction = 0;         // Tracks when a button was last pressed
+
+// ------------------ Buttons Pins ------------------
+
+const byte BUTTON_WAKE_PIN = 2;    // Wake-up button (external interrupt)
+const byte BUTTON_HOUR_PIN = 19;   // Hour increment button
+const byte BUTTON_MINUTE_PIN = 18; // Minute increment button
+const byte BUTTON_SPARE_PIN = 0;   // Enter time-set mode (held 2 seconds)
+
+struct Button {
+  const int pin;
+  bool previouslyPressed;
+  // pressed:
+  bool pressed;
+  bool pressedEvent; // true only for a single loop when pressed.
+  unsigned long pressedEventTime;
+  // long pressed:
+  bool longPressed; // true only for a single loop when pressed.
+  bool longPressedEvent;
+};
+struct Button wakeButton = {.pin = BUTTON_WAKE_PIN};
+struct Button hourButton = {.pin = BUTTON_HOUR_PIN};
+struct Button minuteButton = {.pin = BUTTON_MINUTE_PIN};
+struct Button spareButton = {.pin = BUTTON_SPARE_PIN};
 
 // ------------------ State Machine ------------------
 enum WatchState {
@@ -124,30 +139,6 @@ WatchState watchState = NORMAL;
 //static long vccMillivolts = readVcc();
 //static int vccDisplay = vccMillivolts;
 
-// ------------------ Spare Pin Holding Logic ------------------
-bool sparePinHeld = false;
-bool sparePinHolding = false;
-unsigned long sparePinPressTime = 0;
-
-// ------------------ Hour Pin Holding Logic  (used for setting date)-----
-bool hourPinHeld = false;
-bool hourPinHolding = false;
-unsigned long hourPinPressTime = 0;
-
-// ------------------ Hour/Minute Buttons ------------------
-int hourPbState = LOW;
-int lastHourPbState = LOW;
-int minPbState = LOW;
-int lastMinPbState = LOW;
-int sparePbState = LOW;
-int lastSparePbState = LOW;
-
-// ------------------ Time Setting Variables ------------------
-int setHour = 0;
-int setMinute = 0;
-int setDay = 0;
-int setMonth = 0;
-int setYear = 0;
 // ------------------ Global Time Variables -------------------
 RtcDateTime now;
 int hour = 0;
@@ -163,10 +154,10 @@ bool UKUS = true;  // UK Date format DDMM = True, US Date Format MMDD = False
 
 void setup() {
   // ------------------ Pin Modes ------------------
-  pinMode(BUTTON_WAKE_PIN, INPUT);
-  pinMode(BUTTON_HOUR_PIN, INPUT);
-  pinMode(BUTTON_MINUTE_PIN, INPUT);
-  pinMode(BUTTON_SPARE_PIN, INPUT);
+  buttonInit(&wakeButton);
+  buttonInit(&hourButton);
+  buttonInit(&minuteButton);
+  buttonInit(&spareButton);
   pinMode(17, OUTPUT);
 
   // Attach interrupt for wake button
@@ -210,15 +201,10 @@ void setup() {
 
   while (millis() - start < 2000) {
     //sevseg.setChars("hey");
-    //sevseg.refreshDisplay();
     // e.g., 4975
     // Convert to 4.97V → 497
     sevseg.setNumber(vccDisplay, 3);  // 2 decimal places (4.97)
-    sevseg.refreshDisplay();
   }
-
-  // Initialise tracking of last interaction to now
-  lastInteraction = millis();
 }
 
 void loop() {
@@ -226,6 +212,15 @@ void loop() {
 
   // Refresh the display often
   sevseg.refreshDisplay();
+
+  // Refresh the buttons state
+  buttonUpdateState(&wakeButton);
+  buttonUpdateState(&hourButton);
+  buttonUpdateState(&minuteButton);
+  buttonUpdateState(&spareButton);
+  if (wakeButton.pressed || hourButton.pressed || minuteButton.pressed || spareButton.pressed) {
+    lastInteraction = currentMillis;
+  }
 
   // State machine
   switch (watchState) {
@@ -272,30 +267,24 @@ void loop() {
 //                  NORMAL MODE
 // ----------------------------------------------------------
 void handleNormalMode() {
-  // If interrupt triggered, we've just woken up → reset things
-  if (wakeInterruptTriggered) {
-    wakeInterruptTriggered = false;
-    lastInteraction = millis();
+  //check if min button is pressed, display date if it is
+  if (minuteButton.pressedEvent) {
+    watchState = SHOWDATE;
+  } else if (spareButton.longPressedEvent) {
+    watchState = SHOWSET;
+  } else if (hourButton.longPressedEvent) {
+    watchState = SHOWDSET;
   }
 
-  //check if min button is pressed, display date if it is
-  if (digitalRead(BUTTON_MINUTE_PIN) == HIGH) {
-    watchState = SHOWDATE;
-    return;
-  }
   //Time is read once globally before displaying time, reduces flickering
   sevseg.setNumber(timeCombined);
 
   // Check for inactivity → sleep
-  if (currentMillis - lastInteraction > wakeInterval) {
+  if (currentMillis - lastInteraction > WAKE_INTERVAL) {
     goToSleep();
-    return;
   }
-
-  // Handle Spare Pin (enter time-set if held 2s)
-  checkSparePinHold();
-  checkHourPinHold();
 }
+
 // ----------------------------------------------------------
 //                  DATE MODE - With moonphse
 // ----------------------------------------------------------
@@ -314,62 +303,46 @@ void handleShowDateMode() {
     firstEntry = false;
   }
 
-  if (digitalRead(BUTTON_MINUTE_PIN) == HIGH) {
-    unsigned long currentMillis = millis();
-    //RtcDateTime now = Rtc.GetDateTime();
+  // Toggle every 1000ms (1 second)
+  unsigned long currentMillis = millis();
+  if (currentMillis - lastToggleTime >= 1000) {
+    stateDate = (stateDate + 1) % 3;
+    lastToggleTime = currentMillis;
+  }
 
-    //now = Rtc.GetDateTime();
+  if (stateDate == 0) {
+    //Moonphase
+    byte moonPhase = getMoonPhase(now.Year(), now.Month(), now.Day());
+    sevseg.setSegments(moonPhases[moonPhase]);
 
-    // Toggle every 1000ms (1 second)
-    if (currentMillis - lastToggleTime >= 1000) {
-      stateDate = (stateDate + 1) % 5;
-      lastToggleTime = currentMillis;
+  } else if (stateDate == 1) {
+    //Date
+    if (UKUS == true) {
+      dateCombined = (now.Day() * 100) + now.Month();
+    } else {
+      dateCombined = (now.Month() * 100) + now.Day();
     }
 
-    if (stateDate == 0) {
-      //Moonphase
-      byte moonPhase = getMoonPhase(now.Year(), now.Month(), now.Day());
-      sevseg.setSegments(moonPhases[moonPhase]);
-    }
+    sevseg.setNumber(dateCombined, 2);  // 1 = leading zeros
 
-    if (stateDate == 1) {
-      //Date
-      // RtcDateTime now = Rtc.GetDateTime();
-      if (UKUS == true) {
-        dateCombined = (now.Day() * 100) + now.Month();
-      } else {
-        dateCombined = (now.Month() * 100) + now.Day();
-      }
+  } else if (stateDate == 2) {
+    //Year
+    yearCombined = now.Year();
+    sevseg.setNumber(yearCombined);  // 1 = leading zeros
 
-      sevseg.setNumber(dateCombined, 2);  // 1 = leading zeros
-    }
+  } else if (stateDate == 3) {
+    //Vcc
+    sevseg.setNumber(vccDisplay, 3);
 
-    if (stateDate == 2) {
-      //Year
-      //RtcDateTime now = Rtc.GetDateTime();
-      yearCombined = now.Year();
-      sevseg.setNumber(yearCombined);  // 1 = leading zeros
-    }
+  } else if (stateDate == 4) {
+    //battery percentage
+    batPerc = voltageToPercentage(voltage);
+    sevseg.setNumber(batPerc);
+  }
 
-    if (stateDate == 3) {
-      //Year
-      //RtcDateTime now = Rtc.GetDateTime();
-      sevseg.setNumber(vccDisplay, 3);
-    }
-
-    if (stateDate == 4) {
-      //Year
-      //RtcDateTime now = Rtc.GetDateTime();
-      batPerc = voltageToPercentage(voltage);
-      sevseg.setNumber(batPerc);
-    }
-
-    sevseg.refreshDisplay();  // Update display
-
-  } else {
-    // Button released → return to NORMAL state
+  // Button released → return to NORMAL state
+  if (!minuteButton.pressedEvent) {
     watchState = NORMAL;
-    lastInteraction = millis();
   }
 }
 
@@ -378,18 +351,18 @@ void handleShowDateMode() {
 //   Display "SET" for 2 seconds, then go into TIMESET
 // ----------------------------------------------------------
 void handleShowSetMode() {
-  // Simply display "SET" for showSetTime (2s)
+  static unsigned long stateEnteredTime = -1;
+  if (stateEnteredTime == -1) {
+    stateEnteredTime = currentMillis;
+  }
+  // Simply display "SET" for SHOW_SET_TIME (2s)
   sevseg.setChars("SET ");
 
-  if (currentMillis - sparePinPressTime >= showSetTime) {
-    // After 2 seconds, enter TIMESET
-    // Grab current RTC time as a starting point
-    RtcDateTime now = Rtc.GetDateTime();
-    setHour = now.Hour();
-    setMinute = now.Minute();
-
+  // After 2 seconds, enter TIMESET
+  if (currentMillis - stateEnteredTime >= SHOW_SET_TIME) {
     watchState = TIMESET;
-    lastInteraction = millis();  // reset inactivity timer
+    stateEnteredTime = -1;
+    lastInteraction = currentMillis;
   }
 }
 
@@ -399,35 +372,39 @@ void handleShowSetMode() {
 //   5 seconds, lock in and sleep.
 // ----------------------------------------------------------
 void handleTimeSetMode() {
+  static int setHour = -1;
+  static int setMinute = -1;
+
+  if (setHour == -1 || setMinute == -1) {
+    // Grab current RTC time as a starting point
+    RtcDateTime now = Rtc.GetDateTime();
+    setHour = now.Hour();
+    setMinute = now.Minute();
+  }
+
   // Display the 'setHour' and 'setMinute' being edited
   int timeCombined = (setHour * 100) + setMinute;
   sevseg.setNumber(timeCombined, 2);
 
   // If no interaction for 5s, commit the new time and sleep
-  if (currentMillis - lastInteraction > wakeInterval) {
+  if (currentMillis - lastInteraction > COMMIT_TIME) {
     RtcDateTime now = Rtc.GetDateTime();
     // Lock in the new time (day/month/year remain the same)
     Rtc.SetDateTime(RtcDateTime(now.Year(), now.Month(), now.Day(),
                                 setHour, setMinute, now.Second()));
+    setHour = -1;
+    setMinute = -1;
     goToSleep();
     return;
   }
 
-  // Check hour button
-  hourPbState = digitalRead(BUTTON_HOUR_PIN);
-  if (hourPbState == LOW && lastHourPbState == HIGH) {
+  // Check buttons
+  if (hourButton.pressedEvent) {
     setHour = (setHour + 1) % 24;
-    lastInteraction = millis();  // user pressed something
   }
-  lastHourPbState = hourPbState;
-
-  // Check minute button
-  minPbState = digitalRead(BUTTON_MINUTE_PIN);
-  if (minPbState == LOW && lastMinPbState == HIGH) {
+  if (minuteButton.pressedEvent) {
     setMinute = (setMinute + 1) % 60;
-    lastInteraction = millis();  // user pressed something
   }
-  lastMinPbState = minPbState;
 }
 
 // ----------------------------------------------------------
@@ -435,20 +412,18 @@ void handleTimeSetMode() {
 //   Display "dSET" for 2 seconds, then go into TIMESET
 // ----------------------------------------------------------
 void handleShowDSetMode() {
-  // Simply display "SET" for showSetTime (2s)
+  static unsigned long stateEnteredDate = -1;
+  if (stateEnteredDate == -1) {
+    stateEnteredDate = currentMillis;
+  }
+  // Simply display "dSET" for SHOW_SET_TIME (2s)
   sevseg.setChars("dSET");
-  sevseg.refreshDisplay();
 
-  if (currentMillis - hourPinPressTime >= showSetTime) {
-    // After 2 seconds, enter TIMESET
-    // Grab current RTC time as a starting point
-    RtcDateTime now = Rtc.GetDateTime();
-    setDay = now.Day();
-    setMonth = now.Month();
-    setYear = now.Year();
-
+  if (currentMillis - stateEnteredDate >= SHOW_SET_TIME) {
+    // After 2 seconds, enter DATESET
     watchState = DATESET;
-    lastInteraction = millis();  // reset inactivity timer
+    stateEnteredDate = -1;
+    lastInteraction = currentMillis;
   }
 }
 
@@ -458,73 +433,75 @@ void handleShowDSetMode() {
 //   5 seconds, lock in and sleep.
 // ----------------------------------------------------------
 void handleDateSetMode() {
-  // Display the 'setHour' and 'setMinute' being edited
-  //int dateCombined = (setDay * 100) + setMonth;
+  static int setDay = -1;
+  static int setMonth = -1;
 
+  if (setDay == -1 || setMonth == -1) {
+    // Grab current RTC time as a starting point
+    RtcDateTime now = Rtc.GetDateTime();
+    setDay = now.Day();
+    setMonth = now.Month();
+  }
+
+  // Display the 'setDay' / 'setMonth' being edited
   if (UKUS == true) {
     dateCombined = (setDay * 100) + setMonth;
   } else {
     dateCombined = (setMonth * 100) + setDay;
   }
   sevseg.setNumber(dateCombined, 2);
+
   // If no interaction for 5s, commit the new time and sleep
-  if (currentMillis - lastInteraction > 3000) {
+  if (currentMillis - lastInteraction > COMMIT_TIME) {
     RtcDateTime now = Rtc.GetDateTime();
     // Lock in the new time (day/month/year remain the same)
     Rtc.SetDateTime(RtcDateTime(now.Year(), setMonth, setDay,
                                 now.Hour(), now.Minute(), now.Second()));
+    setDay = -1;
+    setMonth = -1;
     watchState = YEARSET;
-    lastInteraction = millis();
     return;
   }
 
-  // Check hour button
-  hourPbState = digitalRead(BUTTON_HOUR_PIN);
-  if (hourPbState == LOW && lastHourPbState == HIGH) {
+  // Check buttons
+  if (hourButton.pressedEvent) {
     setDay = (setDay % 31) + 1;
-    lastInteraction = millis();  // user pressed something
   }
-  lastHourPbState = hourPbState;
-
-  // Check minute button
-  minPbState = digitalRead(BUTTON_MINUTE_PIN);
-  if (minPbState == LOW && lastMinPbState == HIGH) {
+  if (minuteButton.pressedEvent) {
     setMonth = (setMonth % 12) + 1;
-    lastInteraction = millis();  // user pressed something
   }
-  lastMinPbState = minPbState;
 }
 
 void handleYearSetMode() {
-  // Display the 'setHour' and 'setMinute' being edited
+  static int setYear = -1;
+
+  if (setYear == -1) {
+    // Grab current RTC year as a starting point
+    RtcDateTime now = Rtc.GetDateTime();
+    setYear = now.Year();
+  }
+
+  // Display the 'setYear' being edited
   sevseg.setNumber(setYear);
 
   // If no interaction for 5s, commit the new time and sleep
-  if (currentMillis - lastInteraction > 3000) {
+  if (currentMillis - lastInteraction > COMMIT_TIME) {
     RtcDateTime now = Rtc.GetDateTime();
     // Lock in the new time (day/month/year remain the same)
     Rtc.SetDateTime(RtcDateTime(setYear, now.Month(), now.Day(),
                                 now.Hour(), now.Minute(), now.Second()));
+    setYear = -1;
     watchState = UKUSSET;
-    lastInteraction = millis();
     return;
   }
 
-  // Check hour button
-  hourPbState = digitalRead(BUTTON_HOUR_PIN);
-  if (hourPbState == LOW && lastHourPbState == HIGH) {
+  // Check buttons
+  if (hourButton.pressedEvent) {
     setYear = setYear + 1;
-    lastInteraction = millis();  // user pressed something
   }
-  lastHourPbState = hourPbState;
-
-  // Check minute button
-  minPbState = digitalRead(BUTTON_MINUTE_PIN);
-  if (minPbState == LOW && lastMinPbState == HIGH) {
+  if (minuteButton.pressedEvent) {
     setYear = setYear - 1;
-    lastInteraction = millis();  // user pressed something
   }
-  lastMinPbState = minPbState;
 }
 
 void handleUKUSSetMode() {
@@ -533,7 +510,7 @@ void handleUKUSSetMode() {
   sevseg.setChars(UKUS ? "DDnn" : "nnDD");
 
   // If no interaction for 5s, commit the new time and sleep
-  if (currentMillis - lastInteraction > 2000) {
+  if (currentMillis - lastInteraction > COMMIT_TIME) {
     RtcDateTime now = Rtc.GetDateTime();
     // Lock in the new time (day/month/year remain the same)
     day = now.Day();
@@ -551,76 +528,11 @@ void handleUKUSSetMode() {
     return;
   }
 
-  // Check hour button
-  hourPbState = digitalRead(BUTTON_HOUR_PIN);
-  if (hourPbState == LOW && lastHourPbState == HIGH) {
+  // Check buttons
+  if (hourButton.pressedEvent || minuteButton.pressedEvent) {
     UKUS = !UKUS;
-    lastInteraction = millis();  // user pressed something
-  }
-  lastHourPbState = hourPbState;
-
-  // Check minute button
-  minPbState = digitalRead(BUTTON_MINUTE_PIN);
-  if (minPbState == LOW && lastMinPbState == HIGH) {
-    UKUS = !UKUS;
-    lastInteraction = millis();  // user pressed something
-  }
-  lastMinPbState = minPbState;
-}
-
-// ----------------------------------------------------------
-//          Check if Spare Pin is held for 2 seconds
-// ----------------------------------------------------------
-void checkSparePinHold() {
-  int spareState = digitalRead(BUTTON_SPARE_PIN);
-
-  // We assume pin is active LOW; adjust if reversed
-  if (spareState == HIGH) {
-    // If not previously pressed, note the time
-    if (!sparePinHolding) {
-      sparePinHolding = true;
-      sparePinPressTime = currentMillis;
-    } else {
-      // Already holding; check if 2s have elapsed
-      if (!sparePinHeld && (currentMillis - sparePinPressTime >= holdDuration)) {
-        // Officially move to SHOWSET
-        sparePinHeld = true;
-        watchState = SHOWSET;
-        sparePinPressTime = currentMillis;  // re-use to track "SET" display
-      }
-    }
-  } else {
-    // Spare pin released, reset flags
-    sparePinHolding = false;
-    sparePinHeld = false;
   }
 }
-
-void checkHourPinHold() {
-  int dSetState = digitalRead(BUTTON_HOUR_PIN);
-
-  // We assume pin is active LOW; adjust if reversed
-  if (dSetState == HIGH) {
-    // If not previously pressed, note the time
-    if (!hourPinHolding) {
-      hourPinHolding = true;
-      hourPinPressTime = currentMillis;
-    } else {
-      // Already holding; check if 2s have elapsed
-      if (!hourPinHeld && (currentMillis - hourPinPressTime >= holdDuration)) {
-        // Officially move to SHOWSET
-        hourPinHeld = true;
-        watchState = SHOWDSET;
-        hourPinPressTime = currentMillis;  // re-use to track "SET" display
-      }
-    }
-  } else {
-    // Spare pin released, reset flags
-    hourPinHolding = false;
-    hourPinHeld = false;
-  }
-}
-
 
 // ----------------------------------------------------------
 //                   Sleep Logic
@@ -648,7 +560,7 @@ void goToSleep() {
 // ----------------------------------------------------------
 void isrWake() {
   // This is triggered by BUTTON_WAKE_PIN falling
-  wakeInterruptTriggered = true;
+  lastInteraction = millis();
   digitalWrite(17, HIGH);
   watchState = NORMAL;
   now = Rtc.GetDateTime();
@@ -664,5 +576,49 @@ void isrWake() {
   }
   timeCombined = (hour * 100) + minute;
   yearCombined = year;
-  lastInteraction = millis();
+}
+
+// ----------------------------------------------------------
+//                Button management
+// ----------------------------------------------------------
+
+void buttonInit(struct Button* button) {
+  pinMode(button->pin, INPUT);
+  button->previouslyPressed = false;
+  button->pressed = false;
+  button->pressedEvent = false;
+  button->pressedEventTime = 0;
+  button->longPressed = false;
+  button->longPressedEvent = false;
+}
+
+void buttonUpdateState(struct Button* button) {
+  button->previouslyPressed = button->pressed;
+  // We assume pin is active HIGH; adjust if reversed
+  button->pressed = (digitalRead(button->pin) == HIGH);
+  if (!button->pressed) {
+    // pin released, reset flags
+    if (button->previouslyPressed) {
+      button->previouslyPressed = false;
+      button->pressedEventTime = 0;
+      button->longPressedEvent = false;
+    }
+
+  } else if (button->pressedEvent) {
+    // Already detected as a press.
+    button->pressedEvent = false;
+
+  } else if (!button->previouslyPressed) {
+    // If not previously pressed, note the time
+    button->pressedEvent = true;
+    button->pressedEventTime = currentMillis;
+
+  } else if (button->longPressedEvent) {
+    // Already detected as a long press.
+    button->longPressedEvent = false;
+
+  } else if (!button->longPressed && currentMillis - button->pressedEventTime >= LONG_PRESS_DELAY) {
+    button->longPressed = true;
+    button->longPressedEvent = true;
+  }
 }
