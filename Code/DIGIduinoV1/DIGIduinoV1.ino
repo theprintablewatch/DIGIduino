@@ -22,6 +22,7 @@ SevSeg sevseg;
 const unsigned long WAKE_INTERVAL = 8000;  // Display active for 8s if no further interaction
 const unsigned long COMMIT_TIME = 2000;    // Commit changes after 2s if no interaction
 const unsigned long LONG_PRESS_DELAY = 2000;  // 2s hold to enter time-set mode
+const unsigned long REPEATED_EVENT_INTERVAL = 300;
 const unsigned long SHOW_SET_TIME = 2000;  // 2s to display "SET" before entering time-set
 unsigned long currentMillis;
 unsigned long lastInteraction = 0;         // Tracks when a button was last pressed
@@ -41,8 +42,11 @@ struct Button {
   bool pressedEvent; // true only for a single loop when pressed.
   unsigned long pressedEventTime;
   // long pressed:
-  bool longPressed; // true only for a single loop when pressed.
+  bool longPressed; // true only for a single loop after LONG_PRESS_DELAY milliseconds
   bool longPressedEvent;
+  // repeated event fired after a long press
+  bool repeatedEvent; // true only for a single loop, every REPEATED_EVENT_INTERVAL millisecond
+  unsigned long repeatedEventNextTime;
 };
 struct Button wakeButton = {.pin = BUTTON_WAKE_PIN};
 struct Button hourButton = {.pin = BUTTON_HOUR_PIN};
@@ -341,7 +345,7 @@ void handleShowDateMode() {
   }
 
   // Button released → return to NORMAL state
-  if (!minuteButton.pressedEvent) {
+  if (!minuteButton.pressed) {
     watchState = NORMAL;
   }
 }
@@ -399,10 +403,10 @@ void handleTimeSetMode() {
   }
 
   // Check buttons
-  if (hourButton.pressedEvent) {
+  if (hourButton.pressedEvent || hourButton.repeatedEvent) {
     setHour = (setHour + 1) % 24;
   }
-  if (minuteButton.pressedEvent) {
+  if (minuteButton.pressedEvent || minuteButton.repeatedEvent) {
     setMinute = (setMinute + 1) % 60;
   }
 }
@@ -464,10 +468,10 @@ void handleDateSetMode() {
   }
 
   // Check buttons
-  if (hourButton.pressedEvent) {
+  if (hourButton.pressedEvent || hourButton.repeatedEvent) {
     setDay = (setDay % 31) + 1;
   }
-  if (minuteButton.pressedEvent) {
+  if (minuteButton.pressedEvent || minuteButton.repeatedEvent) {
     setMonth = (setMonth % 12) + 1;
   }
 }
@@ -496,10 +500,10 @@ void handleYearSetMode() {
   }
 
   // Check buttons
-  if (hourButton.pressedEvent) {
+  if (hourButton.pressedEvent || hourButton.repeatedEvent) {
     setYear = setYear + 1;
   }
-  if (minuteButton.pressedEvent) {
+  if (minuteButton.pressedEvent || minuteButton.repeatedEvent) {
     setYear = setYear - 1;
   }
 }
@@ -590,35 +594,45 @@ void buttonInit(struct Button* button) {
   button->pressedEventTime = 0;
   button->longPressed = false;
   button->longPressedEvent = false;
+  button->repeatedEvent = false;
+  button->repeatedEventNextTime = 0;
 }
 
 void buttonUpdateState(struct Button* button) {
-  button->previouslyPressed = button->pressed;
+  // reset event flags.
+  button->pressedEvent = false;
+  button->longPressedEvent = false;
+  button->repeatedEvent = false;
+
   // We assume pin is active HIGH; adjust if reversed
+  button->previouslyPressed = button->pressed;
   button->pressed = (digitalRead(button->pin) == HIGH);
   if (!button->pressed) {
     // pin released, reset flags
     if (button->previouslyPressed) {
       button->previouslyPressed = false;
       button->pressedEventTime = 0;
+      button->longPressed = false;
       button->longPressedEvent = false;
+      button->repeatedEvent = false;
+      button->repeatedEventNextTime = 0;
     }
 
-  } else if (button->pressedEvent) {
-    // Already detected as a press.
-    button->pressedEvent = false;
+  } else {
 
-  } else if (!button->previouslyPressed) {
-    // If not previously pressed, note the time
-    button->pressedEvent = true;
-    button->pressedEventTime = currentMillis;
+    if (!button->previouslyPressed) {
+      // was just pressed.
+      button->pressedEvent = true;
+      button->pressedEventTime = currentMillis;
 
-  } else if (button->longPressedEvent) {
-    // Already detected as a long press.
-    button->longPressedEvent = false;
-
-  } else if (!button->longPressed && currentMillis - button->pressedEventTime >= LONG_PRESS_DELAY) {
-    button->longPressed = true;
-    button->longPressedEvent = true;
+    } else if (!button->longPressed && currentMillis - button->pressedEventTime >= LONG_PRESS_DELAY) {
+      button->longPressed = true;
+      button->longPressedEvent = true;
+      button->repeatedEventNextTime = currentMillis + REPEATED_EVENT_INTERVAL;
+    
+    } else if (button->longPressed && currentMillis >= button->repeatedEventNextTime) {
+      button->repeatedEvent = true;
+      button->repeatedEventNextTime = currentMillis + REPEATED_EVENT_INTERVAL;
+    }
   }
 }
